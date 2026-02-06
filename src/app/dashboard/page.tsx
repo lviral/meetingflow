@@ -1,14 +1,18 @@
 ﻿import { MetricCard } from "@/components/MetricCard";
+import SignOutButton from "@/app/dashboard/SignOutButton";
 
 export default function DashboardPage() {
   return (
     <section className="space-y-8">
-      <header>
-        <p className="text-sm uppercase tracking-[0.3em] text-muted">Dashboard</p>
-        <h1 className="mt-3 text-3xl font-semibold">Meeting Spend Overview</h1>
-        <p className="mt-2 text-muted">
-          Placeholder metrics and chart area for the upcoming analytics.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm uppercase tracking-[0.3em] text-muted">Dashboard</p>
+          <h1 className="mt-3 text-3xl font-semibold">Meeting Spend Overview</h1>
+          <p className="mt-2 text-muted">
+            Placeholder metrics and chart area for the upcoming analytics.
+          </p>
+        </div>
+        <SignOutButton />
       </header>
 
       <div className="grid gap-4 md:grid-cols-3">
