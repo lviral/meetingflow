@@ -1,7 +1,95 @@
-﻿import { MetricCard } from "@/components/MetricCard";
+﻿"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { MetricCard } from "@/components/MetricCard";
 import SignOutButton from "@/app/dashboard/SignOutButton";
 
+type WeeklySummary = {
+  totalMeetings: number;
+  totalHours: number;
+  totalCostUSD: number;
+};
+
+type SummaryResponse = {
+  summary: WeeklySummary;
+};
+
 export default function DashboardPage() {
+  const [summary, setSummary] = useState<WeeklySummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSummary() {
+      try {
+        const res = await fetch("/api/calendar/last-week", {
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to load meeting summary");
+        }
+
+        const json = (await res.json()) as SummaryResponse;
+        if (isMounted) {
+          setSummary(json.summary);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : "Unknown error");
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadSummary();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const currencyFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 2,
+      }),
+    []
+  );
+
+  const numberFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat("en-US", {
+        maximumFractionDigits: 2,
+      }),
+    []
+  );
+
+  const costDisplay = summary
+    ? currencyFormatter.format(summary.totalCostUSD)
+    : loading
+    ? "Loading…"
+    : "—";
+
+  const hoursDisplay = summary
+    ? numberFormatter.format(summary.totalHours)
+    : loading
+    ? "Loading…"
+    : "—";
+
+  const meetingsDisplay = summary
+    ? numberFormatter.format(summary.totalMeetings)
+    : loading
+    ? "Loading…"
+    : "—";
+
   return (
     <section className="space-y-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -9,28 +97,22 @@ export default function DashboardPage() {
           <p className="text-sm uppercase tracking-[0.3em] text-muted">Dashboard</p>
           <h1 className="mt-3 text-3xl font-semibold">Meeting Spend Overview</h1>
           <p className="mt-2 text-muted">
-            Placeholder metrics and chart area for the upcoming analytics.
+            Weekly cost summary based on your last 7 days of meetings.
           </p>
         </div>
         <SignOutButton />
       </header>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Total Meeting Spend" value="$—" />
-        <MetricCard label="People-Hours" value="—" />
-        <MetricCard label="Big Meeting Spend (8+ attendees)" value="$—" />
-      </div>
+      {error ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
 
-      <div className="rounded-2xl border border-border bg-surface/60 p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Spend by Department</h2>
-          <span className="text-xs uppercase tracking-[0.3em] text-muted">
-            Bar chart placeholder
-          </span>
-        </div>
-        <div className="mt-6 flex h-64 items-center justify-center rounded-xl border border-dashed border-border bg-background/40">
-          <p className="text-sm text-muted">Bar chart will render here</p>
-        </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <MetricCard label="Total Meeting Spend (USD)" value={costDisplay} />
+        <MetricCard label="Total People-Hours" value={hoursDisplay} />
+        <MetricCard label="Total Meetings" value={meetingsDisplay} />
       </div>
     </section>
   );
