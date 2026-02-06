@@ -2,6 +2,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { getValidAccessToken } from "@/lib/googleToken";
+import { calculateWeeklySummary } from "@/lib/weeklySummary";
 
 const GOOGLE_CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 const MAX_RESULTS = 250;
@@ -99,8 +100,9 @@ export async function GET(request: Request) {
     const json = (await res.json()) as { items?: GoogleCalendarEvent[] };
     const items = json.items ?? [];
     const events = items.map(normalizeEvent);
+    const weeklySummary = calculateWeeklySummary(items);
 
-    return NextResponse.json({ events });
+    return NextResponse.json({ summary: weeklySummary });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
 
