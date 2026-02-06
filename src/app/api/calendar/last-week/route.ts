@@ -70,6 +70,7 @@ export async function GET(request: Request) {
       }
     }
 
+    const includeEvents = url.searchParams.get("includeEvents") === "1";
     const now = new Date();
     const timeMax = now.toISOString();
     const timeMin = new Date(now.getTime() - days * MS_IN_DAY).toISOString();
@@ -101,6 +102,10 @@ export async function GET(request: Request) {
     const items = json.items ?? [];
     const events = items.map(normalizeEvent);
     const weeklySummary = calculateWeeklySummary(items);
+
+    if (includeEvents) {
+      return NextResponse.json({ summary: weeklySummary, events });
+    }
 
     return NextResponse.json({ summary: weeklySummary });
   } catch (error) {
