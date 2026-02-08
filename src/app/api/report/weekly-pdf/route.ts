@@ -190,8 +190,9 @@ export async function GET() {
     const items = json.items ?? [];
     const weeklySummary = calculateWeeklySummary(items);
     const pdfBytes = await buildPdfReport(weeklySummary);
+    const pdfBuffer = Buffer.from(pdfBytes);
 
-    return new NextResponse(pdfBytes, {
+    return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",

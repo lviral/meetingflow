@@ -5,8 +5,10 @@ import {
   BarElement,
   CategoryScale,
   Chart as ChartJS,
+  type ChartOptions,
   LinearScale,
   Tooltip,
+  type TooltipItem,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
 import { MetricCard } from "@/components/MetricCard";
@@ -33,6 +35,11 @@ type SummaryResponse = {
   events?: NormalizedEvent[];
 };
 
+type InsightResponse = {
+  insightText: string;
+  bullets: string[];
+};
+
 const DAYS = 30;
 const HOURLY_RATE = getHourlyRate("engineer");
 
@@ -46,39 +53,59 @@ function toDateKey(date: Date) {
 export default function DashboardPage() {
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
   const [events, setEvents] = useState<NormalizedEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [insight, setInsight] = useState<InsightResponse | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [insightLoading, setInsightLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [insightError, setInsightError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadSummary() {
+    async function loadDashboardData() {
       try {
-        const res = await fetch(`/api/calendar/last-week?days=${DAYS}&includeEvents=1`, {
-          cache: "no-store",
-        });
+        const [summaryRes, insightRes] = await Promise.all([
+          fetch(`/api/calendar/last-week?days=${DAYS}&includeEvents=1`, {
+            cache: "no-store",
+          }),
+          fetch("/api/insights/weekly", {
+            cache: "no-store",
+          }),
+        ]);
 
-        if (!res.ok) {
-          throw new Error("Failed to load meeting summary");
+        if (summaryRes.ok) {
+          const summaryJson = (await summaryRes.json()) as SummaryResponse;
+          if (isMounted) {
+            setSummary(summaryJson.summary);
+            setEvents(summaryJson.events ?? []);
+          }
+        } else if (isMounted) {
+          setSummaryError("Failed to load meeting summary");
         }
 
-        const json = (await res.json()) as SummaryResponse;
-        if (isMounted) {
-          setSummary(json.summary);
-          setEvents(json.events ?? []);
+        if (insightRes.ok) {
+          const insightJson = (await insightRes.json()) as InsightResponse;
+          if (isMounted) {
+            setInsight(insightJson);
+          }
+        } else if (isMounted) {
+          setInsightError("Failed to load executive insight");
         }
       } catch (err) {
         if (isMounted) {
-          setError(err instanceof Error ? err.message : "Unknown error");
+          const message = err instanceof Error ? err.message : "Unknown error";
+          setSummaryError((prev) => prev ?? message);
+          setInsightError((prev) => prev ?? message);
         }
       } finally {
         if (isMounted) {
-          setLoading(false);
+          setSummaryLoading(false);
+          setInsightLoading(false);
         }
       }
     }
 
-    loadSummary();
+    loadDashboardData();
 
     return () => {
       isMounted = false;
@@ -143,7 +170,7 @@ export default function DashboardPage() {
     };
   }, [events]);
 
-  const chartOptions = useMemo(
+  const chartOptions = useMemo<ChartOptions<"bar">>(
     () => ({
       responsive: true,
       maintainAspectRatio: false,
@@ -151,7 +178,8 @@ export default function DashboardPage() {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: (ctx: { raw: number }) => currencyFormatter.format(ctx.raw || 0),
+            label: (ctx: TooltipItem<"bar">) =>
+              currencyFormatter.format(typeof ctx.raw === "number" ? ctx.raw : 0),
           },
         },
       },
@@ -171,19 +199,19 @@ export default function DashboardPage() {
 
   const costDisplay = summary
     ? currencyFormatter.format(summary.totalCostUSD)
-    : loading
+    : summaryLoading
     ? "Loading…"
     : "—";
 
   const hoursDisplay = summary
     ? numberFormatter.format(summary.totalHours)
-    : loading
+    : summaryLoading
     ? "Loading…"
     : "—";
 
   const meetingsDisplay = summary
     ? numberFormatter.format(summary.totalMeetings)
-    : loading
+    : summaryLoading
     ? "Loading…"
     : "—";
 
@@ -200,9 +228,9 @@ export default function DashboardPage() {
         <SignOutButton />
       </header>
 
-      {error ? (
+      {summaryError ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          {error}
+          {summaryError}
         </div>
       ) : null}
 
@@ -220,7 +248,7 @@ export default function DashboardPage() {
           </span>
         </div>
         <div className="mt-6 h-64">
-          {loading ? (
+          {summaryLoading ? (
             <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border bg-background/40">
               <p className="text-sm text-muted">Loading chart…</p>
             </div>
@@ -228,6 +256,40 @@ export default function DashboardPage() {
             <Bar data={chartData} options={chartOptions} />
           )}
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-sky-400/20 bg-gradient-to-br from-slate-900/80 to-slate-800/60 p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-100">Executive Insight</h2>
+          <span className="text-xs uppercase tracking-[0.3em] text-slate-400">
+            AI Summary
+          </span>
+        </div>
+
+        {insightLoading ? (
+          <p className="mt-4 text-sm text-slate-300">Generating executive insight…</p>
+        ) : null}
+
+        {insightError ? (
+          <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {insightError}
+          </p>
+        ) : null}
+
+        {!insightLoading && !insightError && insight ? (
+          <div className="mt-4 space-y-3">
+            <p className="rounded-xl border border-sky-300/15 bg-slate-900/70 p-4 text-sm leading-6 text-slate-100">
+              {insight.insightText}
+            </p>
+            <ul className="space-y-2 text-sm text-slate-200">
+              {insight.bullets.map((bullet) => (
+                <li key={bullet} className="rounded-md bg-slate-900/50 px-3 py-2">
+                  {bullet}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </section>
   );
