@@ -217,7 +217,15 @@ export default function DashboardPage() {
             Weekly cost summary based on your last 30 days of meetings.
           </p>
         </div>
-        <SignOutButton />
+        <div className="flex items-center gap-2">
+          <a
+            href={`/api/report/weekly-pdf?days=${DAYS}`}
+            className="rounded-md border border-border bg-background/40 px-3 py-2 text-sm text-foreground hover:bg-background/60"
+          >
+            PDF Report
+          </a>
+          <SignOutButton />
+        </div>
       </header>
 
       {summaryError ? (

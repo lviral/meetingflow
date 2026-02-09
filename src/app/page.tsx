@@ -1,6 +1,15 @@
-﻿import Link from "next/link";
+import Link from "next/link";
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await getServerSession(authOptions);
+
+  if (session?.user?.email) {
+    redirect("/dashboard");
+  }
+
   return (
     <section className="rounded-2xl border border-border bg-surface/60 p-10 shadow-sm">
       <p className="text-sm uppercase tracking-[0.3em] text-muted">Meetingflow</p>
@@ -17,12 +26,6 @@ export default function HomePage() {
           className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background"
         >
           Go to Login
-        </Link>
-        <Link
-          href="/dashboard"
-          className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground"
-        >
-          View Dashboard
         </Link>
       </div>
     </section>
