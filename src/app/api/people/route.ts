@@ -2,15 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { SALARY_BY_ROLE } from "@/lib/salaryTable";
 
-const ALLOWED_ROLES = new Set([
-  "engineer",
-  "manager",
-  "executive",
-  "sales",
-  "support",
-  "default",
-]);
+const ALLOWED_ROLES = new Set(Object.keys(SALARY_BY_ROLE));
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -85,11 +79,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid person_email" }, { status: 400 });
   }
 
-  if (typeof role !== "string" || !ALLOWED_ROLES.has(role)) {
+  if (typeof role !== "string") {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
 
   const supabase = supabaseServer();
+
+  if (role === "") {
+    const { error } = await supabase
+      .from("people_roles")
+      .delete()
+      .eq("owner_email", ownerEmail)
+      .eq("person_email", personEmail);
+
+    if (error) {
+      return NextResponse.json({ error: "Failed to save person role" }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
+  if (!ALLOWED_ROLES.has(role)) {
+    return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+  }
+
   const { error } = await supabase.from("people_roles").upsert(
     {
       owner_email: ownerEmail,
