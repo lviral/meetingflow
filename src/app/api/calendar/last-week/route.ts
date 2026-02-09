@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { getValidAccessToken } from "@/lib/googleToken";
 import { calculateWeeklySummary } from "@/lib/weeklySummary";
+import { getPeopleRoleMap } from "@/lib/peopleRoles";
+import { calculateMeetingCost } from "@/lib/meetingCost";
 
 const GOOGLE_CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 const MAX_RESULTS = 250;
@@ -25,11 +27,19 @@ function toIsoOrNull(value?: string): string | null {
   return date.toISOString();
 }
 
-function normalizeEvent(event: GoogleCalendarEvent) {
+function normalizeEvent(event: GoogleCalendarEvent, roleByPersonEmail: Map<string, string>) {
   const startRaw = event.start?.dateTime ?? event.start?.date;
   const endRaw = event.end?.dateTime ?? event.end?.date;
   const startIso = toIsoOrNull(startRaw);
   const endIso = toIsoOrNull(endRaw);
+  const eventCost = calculateMeetingCost(
+    {
+      start: { dateTime: startIso ?? undefined },
+      end: { dateTime: endIso ?? undefined },
+      attendees: event.attendees,
+    },
+    roleByPersonEmail
+  );
 
   let durationMinutes = 0;
   if (startIso && endIso) {
@@ -44,7 +54,8 @@ function normalizeEvent(event: GoogleCalendarEvent) {
     start: startIso ?? "",
     end: endIso ?? "",
     durationMinutes,
-    attendeesCount: event.attendees?.length ?? 0,
+    attendeesCount: eventCost?.attendees ?? event.attendees?.length ?? 0,
+    costUSD: eventCost?.costUSD ?? 0,
     isRecurring: Boolean(event.recurringEventId || (event.recurrence && event.recurrence.length > 0)),
   };
 }
@@ -100,8 +111,9 @@ export async function GET(request: Request) {
 
     const json = (await res.json()) as { items?: GoogleCalendarEvent[] };
     const items = json.items ?? [];
-    const events = items.map(normalizeEvent);
-    const weeklySummary = calculateWeeklySummary(items);
+    const roleByPersonEmail = await getPeopleRoleMap(userEmail);
+    const events = items.map((event) => normalizeEvent(event, roleByPersonEmail));
+    const weeklySummary = calculateWeeklySummary(items, roleByPersonEmail);
 
     if (includeEvents) {
       return NextResponse.json({ summary: weeklySummary, events });

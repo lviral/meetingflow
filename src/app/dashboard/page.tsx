@@ -21,6 +21,7 @@ type WeeklySummary = {
   totalMeetings: number;
   totalHours: number;
   totalCostUSD: number;
+  unassignedPeopleCount: number;
 };
 
 type NormalizedEvent = {
@@ -238,6 +239,21 @@ export default function DashboardPage() {
         <MetricCard label="Total Meeting Spend (USD)" value={costDisplay} />
         <MetricCard label="Total People-Hours" value={hoursDisplay} />
         <MetricCard label="Total Meetings" value={meetingsDisplay} />
+      </div>
+
+      <div className="flex items-center gap-3 text-sm text-muted">
+        <span>
+          Unassigned people:{" "}
+          {summary ? numberFormatter.format(summary.unassignedPeopleCount) : summaryLoading ? "Loading…" : "—"}
+        </span>
+        {summary && summary.unassignedPeopleCount > 0 ? (
+          <button
+            type="button"
+            className="rounded-md border border-border bg-background/40 px-3 py-1 text-xs text-foreground hover:bg-background/60"
+          >
+            Assign roles
+          </button>
+        ) : null}
       </div>
 
       <div className="rounded-2xl border border-border bg-card/80 p-6 shadow-sm">

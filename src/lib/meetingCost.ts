@@ -6,7 +6,10 @@ type CalendarEvent = {
   attendees?: Array<{ email?: string }>;
 };
 
-export function calculateMeetingCost(event: CalendarEvent) {
+export function calculateMeetingCost(
+  event: CalendarEvent,
+  roleByPersonEmail?: Map<string, string>
+) {
   const startDateTime = event.start?.dateTime;
   const endDateTime = event.end?.dateTime;
 
@@ -22,14 +25,31 @@ export function calculateMeetingCost(event: CalendarEvent) {
   }
 
   const durationHours = (endMs - startMs) / (1000 * 60 * 60);
-  const attendees = event.attendees?.length ?? 1;
-  const costUSD = Number(
-    (durationHours * attendees * getHourlyRate("engineer")).toFixed(2)
-  );
+  const attendeeEmails = (event.attendees ?? [])
+    .map((attendee) => (typeof attendee.email === "string" ? attendee.email.trim() : ""))
+    .filter((email) => email.length > 0);
+
+  const billedAttendees = attendeeEmails.length > 0 ? attendeeEmails : [""];
+  const unassignedEmails = new Set<string>();
+  let totalHourlyRate = 0;
+
+  for (const email of billedAttendees) {
+    const mappedRole = email ? roleByPersonEmail?.get(email) : undefined;
+    if (email && !mappedRole) {
+      unassignedEmails.add(email);
+    }
+    totalHourlyRate += getHourlyRate(mappedRole ?? "engineer");
+  }
+
+  const attendees = billedAttendees.length;
+  const peopleHours = durationHours * attendees;
+  const costUSD = Number((durationHours * totalHourlyRate).toFixed(2));
 
   return {
     durationHours,
+    peopleHours,
     attendees,
     costUSD,
+    unassignedEmails,
   };
 }
