@@ -1,19 +1,7 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { getValidAccessToken } from "@/lib/googleToken";
-import { calculateWeeklySummary } from "@/lib/weeklySummary";
-
-const GOOGLE_CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
-const DAYS = 30;
-const MAX_RESULTS = 250;
-const MS_IN_DAY = 24 * 60 * 60 * 1000;
-
-type GoogleCalendarEvent = {
-  start?: { dateTime?: string; date?: string };
-  end?: { dateTime?: string; date?: string };
-  attendees?: Array<{ email?: string }>;
-};
+import { getWeeklySummary } from "@/lib/weeklySummary";
 
 type OpenAIChatCompletionResponse = {
   choices?: Array<{
@@ -33,7 +21,7 @@ function cleanBullets(bullets: unknown): string[] {
     .slice(0, 3);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   const userEmail = session?.user?.email;
 
@@ -47,40 +35,29 @@ export async function GET() {
   }
 
   try {
-    const accessToken = await getValidAccessToken(userEmail);
+    const url = new URL(request.url);
+    const days = Number(url.searchParams.get("days"));
+    const summary = await getWeeklySummary({ days, session });
 
-    const now = new Date();
-    const timeMax = now.toISOString();
-    const timeMin = new Date(now.getTime() - DAYS * MS_IN_DAY).toISOString();
+    const prompt = `You are writing a concise executive insight for meeting spend.
+Data for the last ${summary.days} days:
+- Total Meeting Spend (USD): ${summary.totalCostUSD}
+- Total People-Hours: ${summary.totalPeopleHours}
+- Total Meetings: ${summary.totalMeetings}
+- Unassigned People: ${summary.unassignedPeopleCount}
 
-    const params = new URLSearchParams({
-      timeMin,
-      timeMax,
-      singleEvents: "true",
-      orderBy: "startTime",
-      maxResults: String(MAX_RESULTS),
-    });
+Return JSON only with this exact shape:
+{
+  "insightText": "string (max 3 sentences)",
+  "bullets": ["string", "string", "string"]
+}
 
-    const calendarRes = await fetch(`${GOOGLE_CALENDAR_EVENTS_URL}?${params.toString()}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      cache: "no-store",
-    });
-
-    if (!calendarRes.ok) {
-      const errorText = await calendarRes.text();
-      return NextResponse.json(
-        { error: "Failed to fetch Google Calendar events", details: errorText },
-        { status: calendarRes.status }
-      );
-    }
-
-    const calendarJson = (await calendarRes.json()) as { items?: GoogleCalendarEvent[] };
-    const items = calendarJson.items ?? [];
-    const summary = calculateWeeklySummary(items);
-
-    const prompt = `You are writing a concise executive insight for meeting spend.\nData for the last 30 days:\n- Total Meeting Spend (USD): ${summary.totalCostUSD}\n- Total People-Hours: ${summary.totalHours}\n- Total Meetings: ${summary.totalMeetings}\n\nReturn JSON only with this exact shape:\n{\n  "insightText": "string (max 3 sentences)",\n  "bullets": ["string", "string", "string"]\n}\n\nRequirements:\n- Tone: concise, executive, slightly punchy, non-offensive\n- bullets must be concrete spend equivalents (for example hardware purchases, team lunch, or travel-related equivalents)\n- Exactly 3 bullets\n- No markdown`;
+Requirements:
+- Use only the provided totals; do not recompute values.
+- Tone: concise, executive, slightly punchy, non-offensive
+- bullets must be concrete spend equivalents (for example hardware purchases, team lunch, or travel-related equivalents)
+- Exactly 3 bullets
+- No markdown`;
 
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",

@@ -2,21 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { getValidAccessToken } from "@/lib/googleToken";
-import { calculateWeeklySummary } from "@/lib/weeklySummary";
+import { getWeeklySummary, type WeeklySummary } from "@/lib/weeklySummary";
 
 export const runtime = "nodejs";
-
-const GOOGLE_CALENDAR_EVENTS_URL =
-  "https://www.googleapis.com/calendar/v3/calendars/primary/events";
-const MS_IN_DAY = 24 * 60 * 60 * 1000;
-const DAYS = 30;
-
-type GoogleCalendarEvent = {
-  start?: { dateTime?: string; date?: string };
-  end?: { dateTime?: string; date?: string };
-  attendees?: Array<{ email?: string }>;
-};
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -27,16 +15,10 @@ function formatCurrency(value: number) {
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(
-    value
-  );
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
 }
 
-async function buildPdfReport(summary: {
-  totalMeetings: number;
-  totalHours: number;
-  totalCostUSD: number;
-}) {
+async function buildPdfReport(summary: WeeklySummary) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595.28, 841.89]); // A4
   const { width, height } = page.getSize();
@@ -75,7 +57,7 @@ async function buildPdfReport(summary: {
     timeStyle: "short",
   });
 
-  page.drawText(`Last ${DAYS} days · Generated ${generatedAt}`, {
+  page.drawText(`Last ${summary.days} days | Generated ${generatedAt}`, {
     x: cardX + cardPadding,
     y: titleY - 22,
     size: 11,
@@ -96,7 +78,7 @@ async function buildPdfReport(summary: {
     },
     {
       label: "Total People-Hours",
-      value: formatNumber(summary.totalHours),
+      value: formatNumber(summary.totalPeopleHours),
     },
     {
       label: "Total Meetings",
@@ -146,7 +128,7 @@ async function buildPdfReport(summary: {
   return pdfDoc.save();
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   const userEmail = session?.user?.email;
 
@@ -155,40 +137,9 @@ export async function GET() {
   }
 
   try {
-    const accessToken = await getValidAccessToken(userEmail);
-    const now = new Date();
-    const timeMax = now.toISOString();
-    const timeMin = new Date(now.getTime() - DAYS * MS_IN_DAY).toISOString();
-
-    const params = new URLSearchParams({
-      timeMin,
-      timeMax,
-      singleEvents: "true",
-      orderBy: "startTime",
-      maxResults: "250",
-    });
-
-    const res = await fetch(
-      `${GOOGLE_CALENDAR_EVENTS_URL}?${params.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        cache: "no-store",
-      }
-    );
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      return NextResponse.json(
-        { error: "Failed to fetch Google Calendar events", details: errorText },
-        { status: res.status }
-      );
-    }
-
-    const json = (await res.json()) as { items?: GoogleCalendarEvent[] };
-    const items = json.items ?? [];
-    const weeklySummary = calculateWeeklySummary(items);
+    const url = new URL(request.url);
+    const days = Number(url.searchParams.get("days"));
+    const weeklySummary = await getWeeklySummary({ days, session });
     const pdfBytes = await buildPdfReport(weeklySummary);
     const pdfBuffer = Buffer.from(pdfBytes);
 
@@ -201,6 +152,14 @@ export async function GET() {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
+
+    if (message === "No stored Google tokens for user") {
+      return NextResponse.json(
+        { error: "No Google tokens for user. Re-authenticate to grant calendar access." },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to generate PDF report", details: message },
       { status: 500 }

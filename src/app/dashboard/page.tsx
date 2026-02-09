@@ -11,29 +11,28 @@ import {
   type TooltipItem,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
+import Link from "next/link";
 import { MetricCard } from "@/components/MetricCard";
 import SignOutButton from "@/app/dashboard/SignOutButton";
-import { getHourlyRate } from "@/lib/salaryTable";
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip);
 
 type WeeklySummary = {
+  days: number;
   totalMeetings: number;
-  totalHours: number;
+  totalPeopleHours: number;
   totalCostUSD: number;
   unassignedPeopleCount: number;
-};
-
-type NormalizedEvent = {
-  start: string;
-  end: string;
-  durationMinutes: number;
-  attendeesCount: number;
+  spendByDay: Array<{
+    date: string;
+    costUSD: number;
+    peopleHours: number;
+    meetings: number;
+  }>;
 };
 
 type SummaryResponse = {
   summary: WeeklySummary;
-  events?: NormalizedEvent[];
 };
 
 type InsightResponse = {
@@ -42,7 +41,6 @@ type InsightResponse = {
 };
 
 const DAYS = 30;
-const HOURLY_RATE = getHourlyRate("engineer");
 
 function toDateKey(date: Date) {
   const year = date.getFullYear();
@@ -53,7 +51,6 @@ function toDateKey(date: Date) {
 
 export default function DashboardPage() {
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
-  const [events, setEvents] = useState<NormalizedEvent[]>([]);
   const [insight, setInsight] = useState<InsightResponse | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [insightLoading, setInsightLoading] = useState(true);
@@ -66,10 +63,10 @@ export default function DashboardPage() {
     async function loadDashboardData() {
       try {
         const [summaryRes, insightRes] = await Promise.all([
-          fetch(`/api/calendar/last-week?days=${DAYS}&includeEvents=1`, {
+          fetch(`/api/summary/weekly?days=${DAYS}`, {
             cache: "no-store",
           }),
-          fetch("/api/insights/weekly", {
+          fetch(`/api/insights/weekly?days=${DAYS}`, {
             cache: "no-store",
           }),
         ]);
@@ -78,7 +75,6 @@ export default function DashboardPage() {
           const summaryJson = (await summaryRes.json()) as SummaryResponse;
           if (isMounted) {
             setSummary(summaryJson.summary);
-            setEvents(summaryJson.events ?? []);
           }
         } else if (isMounted) {
           setSummaryError("Failed to load meeting summary");
@@ -144,15 +140,10 @@ export default function DashboardPage() {
       labels.push(date.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
     }
 
-    for (const event of events) {
-      if (!event.start || event.durationMinutes <= 0) continue;
-      const startDate = new Date(event.start);
-      if (Number.isNaN(startDate.getTime())) continue;
-      const key = toDateKey(startDate);
+    for (const bucket of summary?.spendByDay ?? []) {
+      const key = bucket.date;
       if (!buckets.has(key)) continue;
-      const attendees = Math.max(1, event.attendeesCount || 0);
-      const cost = (event.durationMinutes / 60) * attendees * HOURLY_RATE;
-      buckets.set(key, (buckets.get(key) ?? 0) + cost);
+      buckets.set(key, Number(((buckets.get(key) ?? 0) + bucket.costUSD).toFixed(2)));
     }
 
     const data = Array.from(buckets.values()).map((value) => Number(value.toFixed(2)));
@@ -169,7 +160,7 @@ export default function DashboardPage() {
         },
       ],
     };
-  }, [events]);
+  }, [summary]);
 
   const chartOptions = useMemo<ChartOptions<"bar">>(
     () => ({
@@ -205,7 +196,7 @@ export default function DashboardPage() {
     : "—";
 
   const hoursDisplay = summary
-    ? numberFormatter.format(summary.totalHours)
+    ? numberFormatter.format(summary.totalPeopleHours)
     : summaryLoading
     ? "Loading…"
     : "—";
@@ -247,12 +238,12 @@ export default function DashboardPage() {
           {summary ? numberFormatter.format(summary.unassignedPeopleCount) : summaryLoading ? "Loading…" : "—"}
         </span>
         {summary && summary.unassignedPeopleCount > 0 ? (
-          <button
-            type="button"
+          <Link
+            href="/dashboard/people"
             className="rounded-md border border-border bg-background/40 px-3 py-1 text-xs text-foreground hover:bg-background/60"
           >
             Assign roles
-          </button>
+          </Link>
         ) : null}
       </div>
 

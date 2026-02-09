@@ -1,63 +1,16 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { getValidAccessToken } from "@/lib/googleToken";
-import { calculateWeeklySummary } from "@/lib/weeklySummary";
-import { getPeopleRoleMap } from "@/lib/peopleRoles";
-import { calculateMeetingCost } from "@/lib/meetingCost";
 
 const GOOGLE_CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+const DEFAULT_DAYS = 30;
 const MAX_RESULTS = 250;
-const MS_IN_MINUTE = 60_000;
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 
-type GoogleCalendarEvent = {
-  id?: string;
-  start?: { dateTime?: string; date?: string };
-  end?: { dateTime?: string; date?: string };
-  attendees?: Array<{ email?: string }>;
-  recurringEventId?: string;
-  recurrence?: string[];
-};
-
-function toIsoOrNull(value?: string): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
-}
-
-function normalizeEvent(event: GoogleCalendarEvent, roleByPersonEmail: Map<string, string>) {
-  const startRaw = event.start?.dateTime ?? event.start?.date;
-  const endRaw = event.end?.dateTime ?? event.end?.date;
-  const startIso = toIsoOrNull(startRaw);
-  const endIso = toIsoOrNull(endRaw);
-  const eventCost = calculateMeetingCost(
-    {
-      start: { dateTime: startIso ?? undefined },
-      end: { dateTime: endIso ?? undefined },
-      attendees: event.attendees,
-    },
-    roleByPersonEmail
-  );
-
-  let durationMinutes = 0;
-  if (startIso && endIso) {
-    durationMinutes = Math.max(
-      0,
-      Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / MS_IN_MINUTE)
-    );
-  }
-
-  return {
-    eventId: event.id ?? "",
-    start: startIso ?? "",
-    end: endIso ?? "",
-    durationMinutes,
-    attendeesCount: eventCost?.attendees ?? event.attendees?.length ?? 0,
-    costUSD: eventCost?.costUSD ?? 0,
-    isRecurring: Boolean(event.recurringEventId || (event.recurrence && event.recurrence.length > 0)),
-  };
+function parseDays(input: number): number {
+  if (!Number.isFinite(input) || input < 1) return DEFAULT_DAYS;
+  return Math.min(365, Math.floor(input));
 }
 
 export async function GET(request: Request) {
@@ -71,17 +24,7 @@ export async function GET(request: Request) {
   try {
     const accessToken = await getValidAccessToken(userEmail);
     const url = new URL(request.url);
-    const daysParam = url.searchParams.get("days");
-    let days = 7;
-
-    if (daysParam) {
-      const parsed = Number(daysParam);
-      if (Number.isFinite(parsed)) {
-        days = Math.max(1, Math.min(60, Math.floor(parsed)));
-      }
-    }
-
-    const includeEvents = url.searchParams.get("includeEvents") === "1";
+    const days = parseDays(Number(url.searchParams.get("days")));
     const now = new Date();
     const timeMax = now.toISOString();
     const timeMin = new Date(now.getTime() - days * MS_IN_DAY).toISOString();
@@ -109,17 +52,8 @@ export async function GET(request: Request) {
       );
     }
 
-    const json = (await res.json()) as { items?: GoogleCalendarEvent[] };
-    const items = json.items ?? [];
-    const roleByPersonEmail = await getPeopleRoleMap(userEmail);
-    const events = items.map((event) => normalizeEvent(event, roleByPersonEmail));
-    const weeklySummary = calculateWeeklySummary(items, roleByPersonEmail);
-
-    if (includeEvents) {
-      return NextResponse.json({ summary: weeklySummary, events });
-    }
-
-    return NextResponse.json({ summary: weeklySummary });
+    const json = (await res.json()) as { items?: unknown[] };
+    return NextResponse.json({ events: json.items ?? [] });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
 
