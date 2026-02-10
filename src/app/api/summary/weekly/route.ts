@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getUserPlan } from "@/lib/plan";
 import { getWeeklySummary } from "@/lib/weeklySummary";
 
 export async function GET(request: Request) {
@@ -13,9 +14,14 @@ export async function GET(request: Request) {
 
   try {
     const url = new URL(request.url);
-    const days = Number(url.searchParams.get("days"));
+    const requestedDays = Number(url.searchParams.get("days"));
+    const plan = getUserPlan(userEmail);
+    const maxDays = plan === "pro" ? 90 : 30;
+    const days = Number.isFinite(requestedDays) && requestedDays > 0
+      ? Math.min(maxDays, Math.floor(requestedDays))
+      : 30;
     const summary = await getWeeklySummary({ session, days });
-    return NextResponse.json({ summary });
+    return NextResponse.json({ summary, plan });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
 

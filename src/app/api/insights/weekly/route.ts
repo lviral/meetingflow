@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getUserPlan } from "@/lib/plan";
 import { getWeeklySummary } from "@/lib/weeklySummary";
 
 type OpenAIChatCompletionResponse = {
@@ -18,7 +19,7 @@ function cleanBullets(bullets: unknown): string[] {
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter((item) => item.length > 0)
-    .slice(0, 3);
+    .slice(0, 5);
 }
 
 export async function GET(request: Request) {
@@ -36,8 +37,20 @@ export async function GET(request: Request) {
 
   try {
     const url = new URL(request.url);
-    const days = Number(url.searchParams.get("days"));
+    const requestedDays = Number(url.searchParams.get("days"));
+    const plan = getUserPlan(userEmail);
+    const maxDays = plan === "pro" ? 90 : 30;
+    const days = Number.isFinite(requestedDays) && requestedDays > 0
+      ? Math.min(maxDays, Math.floor(requestedDays))
+      : 30;
     const summary = await getWeeklySummary({ days, session });
+
+    if (plan === "free") {
+      return NextResponse.json({
+        insightText: `In the last ${summary.days} days, your meetings cost ${summary.totalCostUSD} USD across ${summary.totalMeetings} meetings.`,
+        bullets: ["Upgrade to Pro to unlock deeper multi-point executive insights."],
+      });
+    }
 
     const prompt = `You are writing a concise executive insight for meeting spend.
 Data for the last ${summary.days} days:
@@ -56,7 +69,7 @@ Requirements:
 - Use only the provided totals; do not recompute values.
 - Tone: concise, executive, slightly punchy, non-offensive
 - bullets must be concrete spend equivalents (for example hardware purchases, team lunch, or travel-related equivalents)
-- Exactly 3 bullets
+- Return 3 to 5 bullets
 - No markdown`;
 
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -92,7 +105,7 @@ Requirements:
                   type: "array",
                   items: { type: "string" },
                   minItems: 3,
-                  maxItems: 3,
+                  maxItems: 5,
                 },
               },
               required: ["insightText", "bullets"],
@@ -123,7 +136,7 @@ Requirements:
     const insightText = typeof parsed.insightText === "string" ? parsed.insightText.trim() : "";
     const bullets = cleanBullets(parsed.bullets);
 
-    if (!insightText || bullets.length !== 3) {
+    if (!insightText || bullets.length < 3 || bullets.length > 5) {
       return NextResponse.json({ error: "Invalid AI response shape" }, { status: 500 });
     }
 

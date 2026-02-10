@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getUserPlan } from "@/lib/plan";
 import { getWeeklySummary, type WeeklySummary } from "@/lib/weeklySummary";
 import { supabaseServer } from "@/lib/supabaseServer";
 
@@ -9,9 +10,9 @@ export const runtime = "nodejs";
 const REPORTS_BUCKET = "reports";
 const SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 
-function parseDays(input: number): number {
+function parseDays(input: number, maxDays: number): number {
   if (!Number.isFinite(input) || input < 1) return 30;
-  return Math.min(365, Math.floor(input));
+  return Math.min(maxDays, Math.floor(input));
 }
 
 function toUtcDateKey(date: Date): string {
@@ -203,8 +204,18 @@ export async function GET(request: Request) {
 
   try {
     const url = new URL(request.url);
-    const days = parseDays(Number(url.searchParams.get("days")));
+    const plan = getUserPlan(userEmail);
+    const maxDays = plan === "pro" ? 90 : 30;
+    const days = parseDays(Number(url.searchParams.get("days")), maxDays);
     const download = url.searchParams.get("download") === "1";
+
+    if (plan === "free") {
+      return NextResponse.json(
+        { error: "PDF reports are available on Pro. Upgrade to enable this feature." },
+        { status: 403 }
+      );
+    }
+
     const weeklySummary = await getWeeklySummary({ days, session });
     const pdfBytes = await buildPdfReport(weeklySummary);
     const pdfBuffer = Buffer.from(pdfBytes);

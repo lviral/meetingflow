@@ -14,6 +14,7 @@ import { Bar } from "react-chartjs-2";
 import Link from "next/link";
 import { MetricCard } from "@/components/MetricCard";
 import SignOutButton from "@/app/dashboard/SignOutButton";
+import type { UserPlan } from "@/lib/plan";
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip);
 
@@ -33,6 +34,7 @@ type WeeklySummary = {
 
 type SummaryResponse = {
   summary: WeeklySummary;
+  plan: UserPlan;
 };
 
 type InsightResponse = {
@@ -56,6 +58,7 @@ export default function DashboardPage() {
   const [insightLoading, setInsightLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<UserPlan>("free");
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
   const [copyingShareLink, setCopyingShareLink] = useState(false);
@@ -78,6 +81,7 @@ export default function DashboardPage() {
           const summaryJson = (await summaryRes.json()) as SummaryResponse;
           if (isMounted) {
             setSummary(summaryJson.summary);
+            setPlan(summaryJson.plan);
           }
         } else if (isMounted) {
           setSummaryError("Failed to load meeting summary");
@@ -211,6 +215,12 @@ export default function DashboardPage() {
     : "—";
 
   async function handleCopyShareLink() {
+    if (plan !== "pro") {
+      setShareError("Upgrade to Pro to enable shareable report links.");
+      setShareStatus(null);
+      return;
+    }
+
     setCopyingShareLink(true);
     setShareStatus(null);
     setShareError(null);
@@ -221,7 +231,8 @@ export default function DashboardPage() {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to generate share link");
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "Failed to generate share link");
       }
 
       const json = (await res.json()) as { signedUrl?: unknown };
@@ -253,8 +264,19 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={`/api/report/weekly-pdf?days=${DAYS}&download=1`}
-            className="rounded-md border border-border bg-background/40 px-3 py-2 text-sm text-foreground hover:bg-background/60"
+            href={plan === "pro" ? `/api/report/weekly-pdf?days=${DAYS}&download=1` : undefined}
+            onClick={(event) => {
+              if (plan !== "pro") {
+                event.preventDefault();
+                setShareStatus(null);
+                setShareError("Upgrade to Pro to enable PDF reports.");
+              }
+            }}
+            aria-disabled={plan !== "pro"}
+            title={plan !== "pro" ? "Upgrade to Pro to enable PDF reports" : undefined}
+            className={`rounded-md border border-border bg-background/40 px-3 py-2 text-sm text-foreground hover:bg-background/60 ${
+              plan !== "pro" ? "cursor-not-allowed opacity-60" : ""
+            }`}
           >
             PDF Report
           </a>
@@ -263,7 +285,8 @@ export default function DashboardPage() {
             onClick={() => {
               void handleCopyShareLink();
             }}
-            disabled={copyingShareLink}
+            disabled={copyingShareLink || plan !== "pro"}
+            title={plan !== "pro" ? "Upgrade to Pro to enable share links" : undefined}
             className="rounded-md border border-border bg-background/40 px-3 py-2 text-sm text-foreground hover:bg-background/60 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {copyingShareLink ? "Copying..." : "Copy share link"}
