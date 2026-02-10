@@ -56,6 +56,9 @@ export default function DashboardPage() {
   const [insightLoading, setInsightLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [copyingShareLink, setCopyingShareLink] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -207,6 +210,37 @@ export default function DashboardPage() {
     ? "Loading…"
     : "—";
 
+  async function handleCopyShareLink() {
+    setCopyingShareLink(true);
+    setShareStatus(null);
+    setShareError(null);
+
+    try {
+      const res = await fetch(`/api/report/weekly-pdf?days=${DAYS}`, {
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to generate share link");
+      }
+
+      const json = (await res.json()) as { signedUrl?: unknown };
+      const signedUrl = typeof json.signedUrl === "string" ? json.signedUrl : "";
+
+      if (!signedUrl) {
+        throw new Error("Missing share link");
+      }
+
+      await navigator.clipboard.writeText(signedUrl);
+      setShareStatus("Link copied (expires in 7 days)");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to copy share link";
+      setShareError(message);
+    } finally {
+      setCopyingShareLink(false);
+    }
+  }
+
   return (
     <section className="space-y-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -219,14 +253,36 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={`/api/report/weekly-pdf?days=${DAYS}`}
+            href={`/api/report/weekly-pdf?days=${DAYS}&download=1`}
             className="rounded-md border border-border bg-background/40 px-3 py-2 text-sm text-foreground hover:bg-background/60"
           >
             PDF Report
           </a>
+          <button
+            type="button"
+            onClick={() => {
+              void handleCopyShareLink();
+            }}
+            disabled={copyingShareLink}
+            className="rounded-md border border-border bg-background/40 px-3 py-2 text-sm text-foreground hover:bg-background/60 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {copyingShareLink ? "Copying..." : "Copy share link"}
+          </button>
           <SignOutButton />
         </div>
       </header>
+
+      {shareStatus ? (
+        <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+          {shareStatus}
+        </div>
+      ) : null}
+
+      {shareError ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {shareError}
+        </div>
+      ) : null}
 
       {summaryError ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">

@@ -3,8 +3,73 @@ import { getServerSession } from "next-auth";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { getWeeklySummary, type WeeklySummary } from "@/lib/weeklySummary";
+import { supabaseServer } from "@/lib/supabaseServer";
 
 export const runtime = "nodejs";
+const REPORTS_BUCKET = "reports";
+const SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+function parseDays(input: number): number {
+  if (!Number.isFinite(input) || input < 1) return 30;
+  return Math.min(365, Math.floor(input));
+}
+
+function toUtcDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+async function ensureReportsBucket() {
+  const supabase = supabaseServer();
+  const { data, error } = await supabase.storage.listBuckets();
+
+  if (error) {
+    throw new Error("Storage unavailable");
+  }
+
+  const exists = (data ?? []).some((bucket) => bucket.name === REPORTS_BUCKET);
+  if (exists) return;
+
+  const { error: createError } = await supabase.storage.createBucket(REPORTS_BUCKET, {
+    public: false,
+  });
+
+  if (createError && !createError.message.toLowerCase().includes("already exists")) {
+    throw new Error("Failed to initialize reports bucket");
+  }
+}
+
+async function uploadAndSign(params: {
+  pdfBuffer: Buffer;
+  userId: string;
+  days: number;
+}): Promise<{ path: string; signedUrl: string }> {
+  await ensureReportsBucket();
+  const supabase = supabaseServer();
+  const utcDate = toUtcDateKey(new Date());
+  const safeUserId = encodeURIComponent(params.userId);
+  const path = `reports/${safeUserId}/weekly/${utcDate}/days-${params.days}.pdf`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(REPORTS_BUCKET)
+    .upload(path, params.pdfBuffer, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+
+  if (uploadError) {
+    throw new Error("Failed to upload report");
+  }
+
+  const { data: signedData, error: signedError } = await supabase.storage
+    .from(REPORTS_BUCKET)
+    .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
+
+  if (signedError || !signedData?.signedUrl) {
+    throw new Error("Failed to create signed URL");
+  }
+
+  return { path, signedUrl: signedData.signedUrl };
+}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -138,17 +203,49 @@ export async function GET(request: Request) {
 
   try {
     const url = new URL(request.url);
-    const days = Number(url.searchParams.get("days"));
+    const days = parseDays(Number(url.searchParams.get("days")));
+    const download = url.searchParams.get("download") === "1";
     const weeklySummary = await getWeeklySummary({ days, session });
     const pdfBytes = await buildPdfReport(weeklySummary);
     const pdfBuffer = Buffer.from(pdfBytes);
+    const userId =
+      (typeof session?.user === "object" &&
+      session.user &&
+      "id" in session.user &&
+      typeof session.user.id === "string"
+        ? session.user.id
+        : null) ?? userEmail;
 
-    return new NextResponse(pdfBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": "attachment; filename=\"meetingflow-report.pdf\"",
-      },
+    let uploadResult: { path: string; signedUrl: string } | null = null;
+    try {
+      uploadResult = await uploadAndSign({ pdfBuffer, userId, days });
+    } catch {
+      if (!download) {
+        return NextResponse.json(
+          { error: "Failed to persist report" },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (download) {
+      return new NextResponse(pdfBuffer, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": "attachment; filename=\"meetingflow-report.pdf\"",
+        },
+      });
+    }
+
+    if (!uploadResult) {
+      return NextResponse.json({ error: "Failed to persist report" }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      summary: weeklySummary,
+      signedUrl: uploadResult.signedUrl,
+      path: uploadResult.path,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
