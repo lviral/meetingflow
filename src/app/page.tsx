@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { AuthCtaButton } from "@/components/AuthCtaButton";
 
 export default async function HomePage() {
   const session = await getServerSession(authOptions);
@@ -21,13 +21,11 @@ export default async function HomePage() {
         is a placeholder landing page.
       </p>
       <div className="mt-8 flex flex-wrap gap-3">
-        <Link
-          href="/login"
-          className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background"
-        >
-          Go to Login
-        </Link>
+        <AuthCtaButton />
       </div>
+      <p className="mt-3 text-sm text-muted">
+        Connect your Google Calendar to calculate meeting cost.
+      </p>
     </section>
   );
 }
