@@ -1,6 +1,7 @@
 import NextAuth, { type NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { applyUserEmailScope } from "@/lib/supabaseRls";
 import { encryptToken } from "@/lib/tokenCrypto";
 
 const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env;
@@ -20,6 +21,7 @@ async function storeTokens(params: {
   expiresAt: number;
 }) {
   const supabase = supabaseServer();
+  await applyUserEmailScope(supabase, params.email);
 
   const accessTokenEnc = encryptToken(params.accessToken);
   const refreshTokenEnc = encryptToken(params.refreshToken);

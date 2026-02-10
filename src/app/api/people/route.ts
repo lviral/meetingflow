@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { applyUserEmailScope } from "@/lib/supabaseRls";
 import { SALARY_BY_ROLE } from "@/lib/salaryTable";
 
 const ALLOWED_ROLES = new Set(Object.keys(SALARY_BY_ROLE));
@@ -34,10 +35,11 @@ export async function GET() {
   }
 
   const supabase = supabaseServer();
+  await applyUserEmailScope(supabase, ownerEmail);
   const { data, error } = await supabase
     .from("people_roles")
     .select("person_email, role, updated_at")
-    .eq("owner_email", ownerEmail)
+    .eq("user_id", ownerEmail)
     .order("updated_at", { ascending: false });
 
   if (error) {
@@ -84,12 +86,13 @@ export async function POST(request: Request) {
   }
 
   const supabase = supabaseServer();
+  await applyUserEmailScope(supabase, ownerEmail);
 
   if (role === "") {
     const { error } = await supabase
       .from("people_roles")
       .delete()
-      .eq("owner_email", ownerEmail)
+      .eq("user_id", ownerEmail)
       .eq("person_email", personEmail);
 
     if (error) {
@@ -105,12 +108,13 @@ export async function POST(request: Request) {
 
   const { error } = await supabase.from("people_roles").upsert(
     {
+      user_id: ownerEmail,
       owner_email: ownerEmail,
       person_email: personEmail,
       role,
     },
     {
-      onConflict: "owner_email,person_email",
+      onConflict: "user_id,person_email",
     }
   );
 

@@ -1,10 +1,12 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { applyUserEmailScope } from "@/lib/supabaseRls";
 import { decryptToken, encryptToken } from "@/lib/tokenCrypto";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 export async function getValidAccessToken(userId: string): Promise<string> {
   const supabase = supabaseServer();
+  await applyUserEmailScope(supabase, userId);
 
   const { data, error } = await supabase
     .from("oauth_tokens")
