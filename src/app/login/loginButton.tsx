@@ -6,17 +6,7 @@ export default function LoginButton() {
   return (
     <button
       type="button"
-      onClick={() =>
-        signIn(
-          "google",
-          { callbackUrl: "/dashboard" },
-          {
-            prompt: "consent",
-            access_type: "offline",
-            scope: "openid email profile https://www.googleapis.com/auth/calendar.readonly",
-          }
-        )
-      }
+      onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
       className="rounded-md bg-black px-4 py-2 text-white"
     >
       Sign in with Google
