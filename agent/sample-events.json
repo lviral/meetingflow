@@ -1,0 +1,114 @@
+{
+  "events": [
+    {
+      "start": "2026-02-04T14:00:00Z",
+      "end": "2026-02-04T14:20:00Z",
+      "attendees": [
+        "alice@company.com",
+        "bob@company.com"
+      ]
+    },
+    {
+      "start": "2026-02-04T16:00:00Z",
+      "end": "2026-02-04T16:30:00Z",
+      "attendees": [
+        "alice@company.com",
+        "carla@company.com",
+        "david@company.com"
+      ]
+    },
+    {
+      "start": "2026-02-05T15:00:00Z",
+      "end": "2026-02-05T16:30:00Z",
+      "attendees": [
+        "alice@company.com",
+        "bob@company.com",
+        "carla@company.com",
+        "david@company.com",
+        "emma@company.com",
+        "frank@company.com",
+        "grace@company.com"
+      ]
+    },
+    {
+      "start": "2026-02-05T18:00:00Z",
+      "end": "2026-02-05T18:15:00Z",
+      "attendees": [
+        "henry@company.com",
+        "irene@company.com"
+      ]
+    },
+    {
+      "start": "2026-02-06T13:00:00Z",
+      "end": "2026-02-06T14:00:00Z",
+      "attendees": [
+        "alice@company.com",
+        "julia@company.com",
+        "kevin@company.com",
+        "luis@company.com"
+      ]
+    },
+    {
+      "start": "2026-02-06T19:30:00Z",
+      "end": "2026-02-06T20:00:00Z",
+      "attendees": [
+        "maria@company.com",
+        "nancy@company.com",
+        "oscar@company.com"
+      ]
+    },
+    {
+      "start": "2026-02-07T15:00:00Z",
+      "end": "2026-02-07T16:00:00Z",
+      "attendees": [
+        "alice@company.com",
+        "bob@company.com",
+        "carla@company.com",
+        "david@company.com",
+        "emma@company.com",
+        "frank@company.com",
+        "grace@company.com",
+        "henry@company.com"
+      ]
+    },
+    {
+      "start": "2026-02-08T17:00:00Z",
+      "end": "2026-02-08T17:25:00Z",
+      "attendees": [
+        "irene@company.com",
+        "julia@company.com"
+      ]
+    },
+    {
+      "start": "2026-02-09T14:30:00Z",
+      "end": "2026-02-09T15:45:00Z",
+      "attendees": [
+        "alice@company.com",
+        "kevin@company.com",
+        "luis@company.com",
+        "maria@company.com",
+        "nancy@company.com"
+      ]
+    },
+    {
+      "start": "2026-02-10T12:00:00Z",
+      "end": "2026-02-10T12:20:00Z",
+      "attendees": [
+        "oscar@company.com",
+        "paula@company.com",
+        "quentin@company.com"
+      ]
+    },
+    {
+      "start": "2026-02-10T20:00:00Z",
+      "end": "2026-02-10T21:00:00Z",
+      "attendees": [
+        "alice@company.com",
+        "bob@company.com",
+        "rachel@company.com",
+        "sam@company.com"
+      ]
+    }
+  ],
+  "days": 7
+}
