@@ -29,25 +29,49 @@ server.registerTool(
     },
   },
   async ({ events, days, roleByPersonEmail }) => {
-    const response = await fetch(`${apiUrl}/api/agent/analyze`, {
-      method: "POST",
-      headers: {
-        Authorization: `Api-Key ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ events, days, roleByPersonEmail }),
-    });
+    console.error("tool called");
+    const url = `${apiUrl}/api/agent/analyze`;
+    console.error("http url:", url);
 
-    const body = await response.text();
-    if (!response.ok) {
-      return { content: [{ type: "text", text: `Error ${response.status}: ${body}` }] };
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Api-Key ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ events, days, roleByPersonEmail }),
+      });
+
+      console.error("http status:", response.status);
+      const body = await response.text();
+      const payload = response.ok
+        ? safeParseJson(body)
+        : { error: `Error ${response.status}`, details: body };
+
+      console.error("tool returning");
+      return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
+    } catch (error) {
+      const payload = {
+        error: "Fetch failed",
+        details: error instanceof Error ? error.message : String(error),
+      };
+      console.error("tool returning");
+      return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
     }
-
-    return { content: [{ type: "text", text: JSON.stringify(JSON.parse(body), null, 2) }] };
   }
 );
 
+function safeParseJson(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return { raw: body };
+  }
+}
+
 async function main() {
+  console.error("boot ok");
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("MeetingFlow MCP Server running on stdio");
@@ -57,4 +81,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-
